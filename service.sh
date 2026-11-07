@@ -44,7 +44,7 @@ setup_audio_hardware() {
     amixer cset numid=9 off 2>/dev/null || true
     amixer cset numid=189 off 2>/dev/null || true
     amixer sset 'SPK Master' on 2>/dev/null || true
-    amixer cset numid=1 180 2>/dev/null || true
+    amixer set 'Master' unmute 2>/dev/null || true
 
     # 2. Enable Lane0 Stereo Mix (Left + Right -> Mono speaker)
     amixer cset numid=148 1 2>/dev/null || true
@@ -53,10 +53,12 @@ setup_audio_hardware() {
     amixer sset 'SPK DRC' off 2>/dev/null || true
     amixer sset 'SPK EQ' off 2>/dev/null || true
 
-    # 4. Clean stale IPC semaphores and dead aplay instances
-    killall -9 aplay 2>/dev/null || true
-    for id in $(ipcs -m 2>/dev/null | awk '{print $2}' | grep -E '^[0-9]+$'); do ipcrm -m $id 2>/dev/null || true; done
-    for id in $(ipcs -s 2>/dev/null | awk '{print $2}' | grep -E '^[0-9]+$'); do ipcrm -s $id 2>/dev/null || true; done
+    # 4. Clean stale IPC semaphores only if vanilla engine is not active
+    if ! pgrep -f "quasar|maind" >/dev/null 2>&1; then
+        killall -9 aplay 2>/dev/null || true
+        for id in $(ipcs -m 2>/dev/null | awk '{print $2}' | grep -E '^[0-9]+$'); do ipcrm -m $id 2>/dev/null || true; done
+        for id in $(ipcs -s 2>/dev/null | awk '{print $2}' | grep -E '^[0-9]+$'); do ipcrm -s $id 2>/dev/null || true; done
+    fi
 }
 
 configure_320kbps() {

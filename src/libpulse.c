@@ -364,7 +364,19 @@ pa_operation *pa_context_set_sink_input_volume(pa_context *c, uint32_t idx, cons
         for (unsigned i = 0; i < cv->channels; i++) sum += cv->values[i];
         uint32_t avg = (uint32_t)(sum / cv->channels);
         int vol_pct = (int)((avg * 100ULL) / 65536ULL);
+        if (vol_pct < 0) vol_pct = 0;
+        if (vol_pct > 100) vol_pct = 100;
         LOG("pa_context_set_sink_input_volume: idx=%u, avg=%u (%d%%)", idx, avg, vol_pct);
+
+        // Forward volume adjustments to vanilla engine (Quasar set_volume.sh or ALSA Master softvol)
+        char cmd[128];
+        if (access("/system/vendor/quasar/set_volume.sh", X_OK) == 0) {
+            snprintf(cmd, sizeof(cmd), "/system/vendor/quasar/set_volume.sh %d >/dev/null 2>&1 &", vol_pct);
+        } else {
+            snprintf(cmd, sizeof(cmd), "amixer set 'Master' %d%% >/dev/null 2>&1 &", vol_pct);
+        }
+        int ret = system(cmd);
+        (void)ret;
     }
     if (cb && c) cb(c, 1, userdata);
     pa_operation *op = calloc(1, sizeof(pa_operation));
@@ -477,9 +489,15 @@ static void open_aplay_pipe(pa_stream *s) {
         unsetenv("LD_LIBRARY_PATH");
         unsetenv("LD_PRELOAD");
 
-        // Use plughw:0,0 with 300ms buffer to eliminate ALSA XRUN underruns
+        // Route audio into vanilla ALSA engine "default" (Master softvol + dmix_spk)
+        // Can be overridden via ALSA_DEVICE env var if needed.
+        const char *alsa_dev = getenv("ALSA_DEVICE");
+        if (!alsa_dev || !*alsa_dev) {
+            alsa_dev = "default";
+        }
+
         execl("/usr/bin/aplay", "aplay",
-              "-D", "plughw:0,0",
+              "-D", alsa_dev,
               "-f", "S16_LE",
               "-r", rate_str,
               "-c", "2",

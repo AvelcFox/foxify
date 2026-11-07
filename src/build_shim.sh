@@ -24,4 +24,9 @@ echo "🔨 Compiling libpulse.so.0 with $CC..."
     -o "$OUT_DIR/libpulse.so.0" \
     "$SCRIPT_DIR/libpulse.c" -lm
 
+GLIBC_DIR="$(dirname "$SCRIPT_DIR")/glibc"
+if [ -d "$GLIBC_DIR" ]; then
+    cp "$OUT_DIR/libpulse.so.0" "$GLIBC_DIR/libpulse.so.0"
+fi
+
 echo "✅ Success: $OUT_DIR/libpulse.so.0 built successfully!"
