@@ -43,6 +43,7 @@ setup_audio_hardware() {
     # 1. Unmute amplifier & standby
     amixer cset numid=9 off 2>/dev/null || true
     amixer cset numid=189 off 2>/dev/null || true
+    amixer sset 'SPK Master' 240 2>/dev/null || true
     amixer sset 'SPK Master' on 2>/dev/null || true
     amixer set 'Master' unmute 2>/dev/null || true
 
