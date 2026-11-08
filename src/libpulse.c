@@ -337,6 +337,67 @@ void pa_context_set_subscribe_callback(pa_context *c, void *cb, void *userdata) 
     }
 }
 
+static uint32_t current_pulse_volume = 32768;
+
+static int is_perceptual_curve_enabled(void) {
+    const char *curve_env = getenv("FOXIFY_PERCEPTUAL_VOLUME");
+    if (curve_env) {
+        return (curve_env[0] == '1' || curve_env[0] == 'y' || curve_env[0] == 'Y' ||
+                curve_env[0] == 't' || curve_env[0] == 'T');
+    }
+
+    const char *paths[] = {
+        "/data/yam/var/foxify/config/volume_curve.txt",
+        "/data/foxify/volume_curve.txt",
+        "/data/soloist_volume_curve.txt",
+        NULL
+    };
+
+    for (int i = 0; paths[i]; i++) {
+        FILE *f = fopen(paths[i], "r");
+        if (f) {
+            char buf[16] = {0};
+            if (fgets(buf, sizeof(buf), f)) {
+                fclose(f);
+                if (buf[0] == '1' || buf[0] == 'y' || buf[0] == 'Y' ||
+                    buf[0] == 'o' || buf[0] == 'O' || buf[0] == 't') {
+                    if (strncasecmp(buf, "off", 3) != 0) {
+                        return 1;
+                    }
+                }
+            } else {
+                fclose(f);
+            }
+        }
+    }
+    return 0; // Default: 0 (standard linear volume)
+}
+
+static int map_volume(uint32_t avg) {
+    if (avg == 0) return 0;
+    if (avg >= 65535) return 100;
+
+    // Check if experimental perceptual volume curve is enabled
+    if (!is_perceptual_curve_enabled()) {
+        // Standard / Default: direct linear percentage (1:1 with Spotify slider)
+        int pct = (int)((avg * 100ULL) / 65535ULL);
+        if (pct < 1 && avg > 0) pct = 1;
+        if (pct > 100) pct = 100;
+        return pct;
+    }
+
+    // Experimental: Perceptual Gamma Mapping (gamma ~ 1.5):
+    // Human ear sensitivity to sound pressure is logarithmic.
+    // Normalized 0.0 .. 1.0 mapped via gamma power curve ~1.5.
+    // At low volume (e.g. 10% on Spotify), this gives ~3-4% ALSA Master,
+    // avoiding the sudden jump in night listening while keeping 100% full scale.
+    float v_norm = (float)avg / 65535.0f;
+    int pct = (int)lrintf(100.0f * powf(v_norm, 1.5f));
+    if (pct < 1) pct = 1;
+    if (pct > 100) pct = 100;
+    return pct;
+}
+
 pa_operation *pa_context_get_sink_input_info(pa_context *c, uint32_t idx, pa_sink_input_info_cb_t cb, void *userdata) {
     LOG("pa_context_get_sink_input_info: idx=%u", idx);
     if (cb && c) {
@@ -348,8 +409,8 @@ pa_operation *pa_context_get_sink_input_info(pa_context *c, uint32_t idx, pa_sin
         info.has_volume = 1;
         info.volume_writable = 1;
         info.volume.channels = 2;
-        info.volume.values[0] = 65536;
-        info.volume.values[1] = 65536;
+        info.volume.values[0] = current_pulse_volume;
+        info.volume.values[1] = current_pulse_volume;
         cb(c, &info, 0, userdata);
         cb(c, NULL, 1, userdata);
     }
@@ -363,10 +424,9 @@ pa_operation *pa_context_set_sink_input_volume(pa_context *c, uint32_t idx, cons
         uint64_t sum = 0;
         for (unsigned i = 0; i < cv->channels; i++) sum += cv->values[i];
         uint32_t avg = (uint32_t)(sum / cv->channels);
-        int vol_pct = (int)((avg * 100ULL) / 65536ULL);
-        if (vol_pct < 0) vol_pct = 0;
-        if (vol_pct > 100) vol_pct = 100;
-        LOG("pa_context_set_sink_input_volume: idx=%u, avg=%u (%d%%)", idx, avg, vol_pct);
+        current_pulse_volume = avg;
+        int vol_pct = map_volume(avg);
+        LOG("pa_context_set_sink_input_volume: idx=%u, avg=%u -> mapped %d%%", idx, avg, vol_pct);
 
         // Forward volume adjustments to vanilla engine (Quasar set_volume.sh or ALSA Master softvol)
         char cmd[128];

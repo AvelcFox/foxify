@@ -1,17 +1,24 @@
 #!/bin/sh
-# 🎙️ Local Voice Command Listener for Spotify Soloist on Yandex Station
+# 🎙️ Local Voice Command Listener for Foxify / Spotify Soloist on Yandex Station
 # Catches native hardware phrase spotter logs ("дальше", "назад", "пауза", "играй", "хватит")
 # Works 100% offline directly on the speaker without any PC!
 
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SERVICE_SH="$SCRIPT_DIR/service.sh"
 MAIND_LOG="/data/quasar/daemons_logs/maind.log"
 FIFO="/tmp/soloist_voice.fifo"
 
 ctl() {
-    "$SERVICE_SH" ctl "$@"
+    if command -v foxify >/dev/null 2>&1; then
+        foxify ctl "$@"
+    elif [ -x "$SCRIPT_DIR/service.sh" ]; then
+        "$SCRIPT_DIR/service.sh" ctl "$@"
+    elif [ -x "$SCRIPT_DIR/../../bin/foxify" ]; then
+        "$SCRIPT_DIR/../../bin/foxify" ctl "$@"
+    elif [ -x /data/spotify/service.sh ]; then
+        /data/spotify/service.sh ctl "$@"
+    fi
 }
 
 action_for() {
