@@ -50,9 +50,12 @@ setup_audio_hardware() {
     # 2. Enable Lane0 Stereo Mix (Left + Right -> Mono speaker)
     amixer cset numid=148 1 2>/dev/null || true
 
-    # 3. Disable speech DRC and Voice EQ for transparent Hi-Fi sound
-    amixer sset 'SPK DRC' off 2>/dev/null || true
-    amixer sset 'SPK EQ' off 2>/dev/null || true
+    # 3. Enable Mini 2 hardware acoustic EQ and DRC for clean speaker compensation and distortion prevention
+    amixer sset 'SPK DRC' on 2>/dev/null || true
+    amixer sset 'SPK EQ' on 2>/dev/null || true
+
+    # 4. Configure ALSA high-quality Speex DSP resampler (eliminates harsh linear aliasing)
+    echo 'defaults.pcm.rate_converter "speexrate_medium"' > /data/.asoundrc 2>/dev/null || true
 
     # 4. Clean stale IPC semaphores only if vanilla engine is not active
     if ! pgrep -f "quasar|maind" >/dev/null 2>&1; then

@@ -488,6 +488,7 @@ static void open_aplay_pipe(pa_stream *s) {
 
         unsetenv("LD_LIBRARY_PATH");
         unsetenv("LD_PRELOAD");
+        setenv("HOME", "/data", 1);
 
         // Route audio into vanilla ALSA engine "default" (Master softvol + dmix_spk)
         // Can be overridden via ALSA_DEVICE env var if needed.
@@ -501,8 +502,6 @@ static void open_aplay_pipe(pa_stream *s) {
               "-f", "S16_LE",
               "-r", rate_str,
               "-c", "2",
-              "--buffer-time=300000",
-              "--period-time=50000",
               "-q", NULL);
         _exit(127);
     }
@@ -514,8 +513,9 @@ static void open_aplay_pipe(pa_stream *s) {
 }
 
 static inline int16_t float_to_s16(float f) {
-    // -1.0 dB digital headroom (0.89125) prevents harsh inter-sample clipping/crackling on Vorbis lossy peaks
-    float val = f * 0.89125f;
+    // -6.0 dB digital headroom (0.50) guarantees that hardware Lane0 Left+Right mono summing
+    // (L + R) on the single speaker never exceeds 1.0 or clips on modern loud masters
+    float val = f * 0.50f;
     if (val >= 1.0f) return 32767;
     if (val <= -1.0f) return -32768;
     return (int16_t)lrintf(val * 32767.0f);
